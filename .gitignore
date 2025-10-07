@@ -1,0 +1,59 @@
+# Git ignorieren
+.env
+.env.local
+.env.production
+
+# Backup Verzeichnis
+backups/
+*.sql
+*.sql.gz
+*.tar.gz
+*.backup
+
+# Logs
+logs/
+*.log
+
+# Docker Volumes (falls lokal gemountet)
+data/
+caddy-data/
+n8n-data/
+postgres-data/
+
+# Temporäre Dateien
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generierte Dateien
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Entwicklung
+node_modules/
+*.pid
+*.seed
+*.pid.lock
+
+# SSL Zertifikate (falls lokal)
+*.pem
+*.key
+*.crt
+*.csr
+
+# Dokumentation Build
+docs/_build/
+docs/.doctrees/
