@@ -1,190 +1,203 @@
-# 🚀 n8n Produktions-Deployment Anleitung
+# 🚀 n8n Production Deployment Guide
 
-## 📋 Überblick
+## 📋 Overview
 
-Dieses Setup erstellt eine vollständige Produktionsumgebung für n8n mit:
-- **Ubuntu 24.04** als Zielserver
-- **Caddy** als Reverse Proxy mit automatischem HTTPS (Let's Encrypt)
-- **n8n** Container (neueste stabile Version)
-- **PostgreSQL** Database mit persistenten Volumes
-- **Docker Compose** für Orchestrierung
-- **Automatische Backups** und Update-Skripte
+This setup creates a complete production environment for n8n with:
+- **Ubuntu 24.04** as target server
+- **Caddy** as reverse proxy with automatic HTTPS (Let's Encrypt)
+- **n8n** container (latest stable version)
+- **PostgreSQL** database with persistent volumes
+- **Docker Compose** for orchestration
+- **Automated backups** and update scripts
 
-## 🏗️ Architektur
+## 🏗️ Architecture
 
 ```
 Internet → Caddy (Port 80/443) → n8n (Port 5678) → PostgreSQL
 ```
 
 ### Services:
-- `caddy`: Reverse Proxy mit automatischem HTTPS
-- `n8n`: Workflow-Automation Platform
-- `postgres`: PostgreSQL Database
-- `mcp`: Platzhalter-Service für zukünftige MCP-Integration
+- `caddy`: Reverse proxy with automatic HTTPS
+- `n8n`: Workflow automation platform
+- `postgres`: PostgreSQL database
+- `mcp`: Placeholder service for future MCP integration
 
 ### Volumes:
-- `caddy-data`: Caddy Daten und Zertifikate
-- `caddy-config`: Caddy Konfiguration
-- `n8n-data`: n8n Workflows und Daten
-- `postgres-data`: PostgreSQL Datenbank
+- `caddy-data`: Caddy data and certificates
+- `caddy-config`: Caddy configuration
+- `n8n-data`: n8n workflows and data
+- `postgres-data`: PostgreSQL database
 
 ## 🛠️ Installation
 
-### 1. Server Vorbereitung (Ubuntu 24.04)
+### 1. Server Preparation (Ubuntu 24.04)
 
 ```bash
-# System Updates
+# System updates
 sudo apt update && sudo apt upgrade -y
 
-# Docker Installation
+# Docker installation
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 
 # Docker Compose V2
 sudo apt install docker-compose-plugin
 
-# User zu Docker Gruppe hinzufügen
+# Add user to Docker group
 sudo usermod -aG docker $USER
 
-# Neuanmeldung oder:
+# Re-login or:
 newgrp docker
 ```
 
-### 2. Projekt Setup
+### 2. Project Setup
 
 ```bash
-# Repository klonen oder Dateien kopieren
+# Clone repository or copy files
 mkdir -p /opt/n8n-production
 cd /opt/n8n-production
 
-# Dateien hierher kopieren:
+# Copy files here:
 # - docker-compose.yml
 # - Caddyfile
-# - .env.template
+# - .env.example
 # - deploy.sh
 # - backup.sh
 ```
 
-### 3. Umgebungskonfiguration
+### 3. Environment Configuration
 
 ```bash
-# .env Datei erstellen
-cp .env.template .env
+# Create .env file
+cp .env.example .env
 
-# .env bearbeiten
+# Edit .env
 nano .env
 ```
 
-#### 🔧 Erforderliche Konfiguration in `.env`:
+### 4. Caddyfile Configuration
+
+⚠️ **Important**: Adapt the `Caddyfile` to your domain:
 
 ```bash
-# Domain Setup
+# Edit Caddyfile
+nano Caddyfile
+```
+
+Replace in the file:
+- `your-domain.com` → your actual domain
+- `your-email@example.com` → your email address for Let's Encrypt
+
+#### 🔧 Required configuration in `.env`:
+
+```bash
+# Domain setup
 N8N_HOST=your-domain.com
 WEBHOOK_URL=https://your-domain.com/
 
-# Encryption Key generieren
+# Generate encryption key
 N8N_ENCRYPTION_KEY=$(openssl rand -hex 32)
 
-# Database Password generieren
+# Generate database password
 DB_POSTGRESDB_PASSWORD=$(openssl rand -base64 32)
 ```
 
-### 4. DNS Konfiguration
+### 5. DNS Configuration
 
-Stelle sicher, dass deine Domain auf den Server zeigt:
+Make sure your domain points to the server:
 ```
 A Record: your-domain.com → SERVER_IP
 ```
 
 ## 🚀 Deployment
 
-### Automatisches Deployment
+### Automatic Deployment
 
 ```bash
-# Erstes Deployment
+# Initial deployment
 ./deploy.sh deploy
 
-# Updates mit Backup
+# Updates with backup
 ./deploy.sh update
 ```
 
-### Manuelle Schritte
+### Manual Steps
 
 ```bash
-# Images herunterladen
+# Download images
 docker compose pull
 
-# Services starten
+# Start services
 docker compose up -d
 
-# Status prüfen
+# Check status
 docker compose ps
 ```
 
 ## 📊 Monitoring & Management
 
-### Service Status prüfen
+### Check service status
 ```bash
 ./deploy.sh status
 ```
 
-### Logs anzeigen
+### View logs
 ```bash
 ./deploy.sh logs
 
-# Oder spezifisch:
+# Or specifically:
 docker compose logs n8n
 docker compose logs caddy
 docker compose logs postgres
 ```
 
-### Services neustarten
+### Restart services
 ```bash
 ./deploy.sh restart
 
-# Oder einzeln:
+# Or individually:
 docker compose restart n8n
 ```
 
 ## 💾 Backup & Restore
 
-### Automatisches Backup
+### Automatic Backup
 ```bash
-# Backup erstellen
+# Create backup
 ./deploy.sh backup
 
-# Oder direkt:
+# Or directly:
 ./backup.sh
 ```
 
-### Backup Inhalte
-Das Backup erstellt:
-- `postgres_TIMESTAMP.sql.gz`: PostgreSQL Dump
-- `n8n_data_TIMESTAMP.tar.gz`: n8n Datenvolume
-- `backup_TIMESTAMP.info`: Restore-Anweisungen
+### Backup Contents
+The backup creates:
+- `postgres_TIMESTAMP.sql.gz`: PostgreSQL dump
+- `n8n_data_TIMESTAMP.tar.gz`: n8n data volume
+- `backup_TIMESTAMP.info`: Restore instructions
 
 ### Restore Process
 
 #### 1. PostgreSQL Restore
 ```bash
-# Backup entpacken und einspielen
+# Extract and restore backup
 gunzip -c postgres_20241007_120000.sql.gz | \
   docker exec -i postgres psql -U n8n -d n8n
 ```
 
-#### 2. n8n Daten Restore
+#### 2. n8n Data Restore
 ```bash
-# Service stoppen
+# Stop service
 docker compose stop n8n
 
-# Daten restore
+# Restore data
 docker run --rm \
   -v n8n-data:/data \
   -v $(pwd):/backup \
   alpine:latest \
   tar xzf /backup/n8n_data_20241007_120000.tar.gz -C /data
 
-# Service starten
+# Start service
 docker compose start n8n
 ```
 
@@ -192,47 +205,47 @@ docker compose start n8n
 
 ### n8n Version Update
 ```bash
-# Mit automatischem Backup
+# With automatic backup
 ./deploy.sh update
 
-# Oder manuell:
+# Or manually:
 docker compose pull n8n
 docker compose up -d n8n
 ```
 
 ### System Maintenance
 ```bash
-# Docker aufräumen
+# Clean up Docker
 docker system prune -f
 
-# Alte Images entfernen
+# Remove old images
 docker image prune -f
 
-# Logs rotieren (falls nötig)
+# Rotate logs (if needed)
 docker compose logs --tail=1000 > logs_backup.txt
 ```
 
-## 🔒 Sicherheit
+## 🔒 Security
 
 ### Firewall Setup
 ```bash
-# UFW aktivieren (falls nicht aktiv)
+# Enable UFW (if not active)
 sudo ufw enable
 
-# Nur notwendige Ports öffnen
+# Open only necessary ports
 sudo ufw allow 22/tcp   # SSH
-sudo ufw allow 80/tcp   # HTTP (für Let's Encrypt)
+sudo ufw allow 80/tcp   # HTTP (for Let's Encrypt)
 sudo ufw allow 443/tcp  # HTTPS
 ```
 
 ### SSL/TLS
-- Caddy verwaltet SSL-Zertifikate automatisch via Let's Encrypt
-- Zertifikate werden automatisch erneuert
-- HSTS und Security Headers sind konfiguriert
+- Caddy manages SSL certificates automatically via Let's Encrypt
+- Certificates are automatically renewed
+- HSTS and security headers are configured
 
-### Zusätzliche Sicherheit (Optional)
+### Additional Security (Optional)
 ```bash
-# n8n Basic Auth aktivieren (in .env):
+# Enable n8n Basic Auth (in .env):
 N8N_BASIC_AUTH_ACTIVE=true
 N8N_BASIC_AUTH_USER=admin
 N8N_BASIC_AUTH_PASSWORD=secure_password
@@ -240,8 +253,8 @@ N8N_BASIC_AUTH_PASSWORD=secure_password
 
 ## 📈 Performance Tuning
 
-### PostgreSQL Optimierung
-Füge zu `docker-compose.yml` unter postgres → command hinzu:
+### PostgreSQL Optimization
+Add to `docker-compose.yml` under postgres → command:
 ```yaml
 command: >
   postgres
@@ -254,10 +267,10 @@ command: >
   -c default_statistics_target=100
 ```
 
-### n8n Speicher-Limits
+### n8n Memory Limits
 ```yaml
 n8n:
-  # ... andere Konfiguration
+  # ... other configuration
   deploy:
     resources:
       limits:
@@ -268,7 +281,7 @@ n8n:
 
 ## 🧩 MCP Service Integration
 
-Der Platzhalter `mcp` Service kann später konfiguriert werden:
+The placeholder `mcp` service can be configured later:
 
 ```yaml
 mcp:
@@ -285,70 +298,70 @@ mcp:
 
 ## 🆘 Troubleshooting
 
-### Häufige Probleme
+### Common Issues
 
-#### n8n startet nicht
+#### n8n won't start
 ```bash
-# Logs prüfen
+# Check logs
 docker compose logs n8n
 
-# Database Connection prüfen
+# Check database connection
 docker compose exec postgres pg_isready -U n8n -d n8n
 ```
 
-#### Let's Encrypt Fehler
+#### Let's Encrypt errors
 ```bash
-# Caddy Logs prüfen
+# Check Caddy logs
 docker compose logs caddy
 
-# DNS Resolution testen
+# Test DNS resolution
 nslookup your-domain.com
 
-# Ports prüfen
+# Check ports
 sudo netstat -tlnp | grep :443
 ```
 
 #### Slow Performance
 ```bash
-# Ressourcenverbrauch prüfen
+# Check resource usage
 docker stats
 
-# Disk Space prüfen
+# Check disk space
 df -h
 du -sh /var/lib/docker/
 ```
 
 ### Log Locations
-- Caddy Access Logs: `/data/logs/n8n-access.log` (im caddy Container)
+- Caddy Access Logs: `/data/logs/n8n-access.log` (in caddy container)
 - n8n Logs: `docker compose logs n8n`
 - PostgreSQL Logs: `docker compose logs postgres`
 
 ## 📞 Support
 
-### Nützliche Commands
+### Useful Commands
 ```bash
-# Komplette Umgebung neustarten
+# Restart complete environment
 docker compose down && docker compose up -d
 
-# Alle Services und Volumes entfernen (ACHTUNG: Datenverlust!)
+# Remove all services and volumes (WARNING: Data loss!)
 docker compose down -v
 
-# System Info
+# System info
 docker system df
 docker compose version
 ```
 
 ### Monitoring Setup (Optional)
-Für Produktionsumgebungen empfohlen:
-- **Uptime Kuma** für Service-Monitoring
-- **Grafana + Prometheus** für Metriken
-- **Loki** für Log-Aggregation
+Recommended for production environments:
+- **Uptime Kuma** for service monitoring
+- **Grafana + Prometheus** for metrics
+- **Loki** for log aggregation
 
 ---
 
 ## 📝 Changelog
 
-- **v1.0**: Initial setup mit Ubuntu 24.04, Caddy, n8n, PostgreSQL
-- Automatische Backup- und Deployment-Skripte
-- Vollständige Produktionskonfiguration mit Sicherheits-Headers
-- MCP Service Vorbereitung
+- **v1.0**: Initial setup with Ubuntu 24.04, Caddy, n8n, PostgreSQL
+- Automated backup and deployment scripts
+- Complete production configuration with security headers
+- MCP service preparation
