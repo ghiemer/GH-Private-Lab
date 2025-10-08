@@ -1,57 +1,25 @@
-# Caddyfile für n8n Produktionssetup
-# Automatisches HTTPS via Let's Encrypt
-
-{$N8N_HOST} {
-    # Reverse Proxy zu n8n Container
-    reverse_proxy n8n:5678 {
-        # Headers für korrekte Proxy-Weiterleitung
-        header_up Host {upstream_hostport}
-        header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
-        header_up X-Forwarded-Host {host}
-        
-        # Timeout-Einstellungen für n8n Workflows
-        transport http {
-            dial_timeout 30s
-            response_header_timeout 60s
-        }
-    }
-
-    # Security Headers
+your-domain.com {
+    reverse_proxy n8n:5678
+    
     header {
-        # HSTS
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        # XSS Protection
-        X-Content-Type-Options nosniff
-        X-Frame-Options DENY
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
         X-XSS-Protection "1; mode=block"
-        # Referrer Policy
-        Referrer-Policy strict-origin-when-cross-origin
-        # Remove Server header
+        Referrer-Policy "strict-origin-when-cross-origin"
         -Server
     }
-
-    # Gzip Kompression
+    
     encode gzip
-
-    # Logging
+    
     log {
-        output file /data/logs/n8n-access.log {
-            roll_size 100MB
-            roll_keep 5
-        }
-        format json
-        level INFO
+        output stdout
+        format console
     }
+    
+    tls your-email@example.com
 }
 
-# Fallback für HTTP zu HTTPS Redirect
-http://{$N8N_HOST} {
+http://your-domain.com {
     redir https://{host}{uri} permanent
 }
-
-# Health Check Endpoint (optional)
-# :8080 {
-#     respond /health "OK" 200
-# }
