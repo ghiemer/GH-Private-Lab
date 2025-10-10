@@ -109,18 +109,6 @@ Make sure your domain points to the server:
 A Record: your-domain.com → SERVER_IP
 ```
 
-## 🚀 Deployment
-
-### Automatic Deployment
-
-```bash
-# Initial deployment
-./deploy.sh deploy
-
-# Updates with backup
-./deploy.sh update
-```
-
 ### Manual Steps
 
 ```bash
@@ -161,45 +149,91 @@ docker compose restart n8n
 
 ## 💾 Backup & Restore
 
-### Automatic Backup
-```bash
-# Create backup
-./deploy.sh backup
+### 🔐 Ein-Datei-Backup (verschlüsselt)
 
-# Or directly:
-./backup.sh
+```bash
+# Einmalig ausführbar machen
+chmod +x scripts/backup.sh
+
+# Backup erstellen (legt ./backups an, wenn nicht vorhanden)
+BACKUP_PASSWORD="dein-starkes-passwort" ./scripts/backup.sh
+
+# Alternativer Zielordner & längere Aufbewahrung
+BACKUP_ROOT=/mnt/backups \
+BACKUP_RETENTION_DAYS=90 \
+BACKUP_PASSWORD="dein-starkes-passwort" \
+  ./scripts/backup.sh
 ```
 
-### Backup Contents
-The backup creates:
-- `postgres_TIMESTAMP.sql.gz`: PostgreSQL dump
-- `n8n_data_TIMESTAMP.tar.gz`: n8n data volume
-- `backup_TIMESTAMP.info`: Restore instructions
+Der Befehl erzeugt eine verschlüsselte Datei wie
+`backups/n8n_full_backup_YYYYmmdd_HHMMSS.tar.gz.enc`, die enthält:
 
-### Restore Process
+- PostgreSQL-Dump (`postgres_TIMESTAMP.sql.gz`)
+- Archiv des `n8n-data` Volumes
+- Archive der Caddy-Volumes (`caddy-data`, `caddy-config`)
+- Wichtige Konfigurationsdateien (`.env*`, `docker-compose.yml`, `Caddyfile`, etc.)
+- Manifest mit Wiederherstellungsinformationen
 
-#### 1. PostgreSQL Restore
+> 🔑 Das Passwort wird **nicht** mitgespeichert. Bewahre es sicher getrennt auf
+> (z. B. Passwortmanager oder Tresor).
+
+### 📤 Offsite-Kopie (optional)
+
 ```bash
-# Extract and restore backup
-gunzip -c postgres_20241007_120000.sql.gz | \
-  docker exec -i postgres psql -U n8n -d n8n
+# Beispiel: per scp auf den lokalen Rechner holen
+scp admin@SERVER_IP:/opt/gh-private-lab/backups/n8n_full_backup_*.enc ./backups/
+
+# Beispiel: mit rclone in die Cloud spiegeln
+rclone copy /opt/gh-private-lab/backups gdrive:n8n-backups --progress
 ```
 
-#### 2. n8n Data Restore
+### 🔁 Wiederherstellung (Kurzfassung)
+
+1. Archiv herunterladen und entschlüsseln:
+
 ```bash
-# Stop service
+openssl enc -d -aes-256-cbc -pbkdf2 \
+  -pass env:BACKUP_PASSWORD \
+  -in n8n_full_backup_YYYYmmdd_HHMMSS.tar.gz.enc \
+  -out backup_bundle.tar.gz
+```
+
+2. Inhalt entpacken und Verzeichnisse prüfen:
+
+```bash
+tar xzf backup_bundle.tar.gz
+# ergibt u. a. postgres_….sql.gz, n8n_data_….tar.gz, configs_….tar.gz
+```
+
+3. Konfigurations-Archiv anwenden:
+
+```bash
+tar xzf configs_YYYYmmdd_HHMMSS.tar.gz -C /opt/gh-private-lab
+```
+
+4. Volumes zurückspielen (für jedes Archiv wiederholen):
+
+```bash
 docker compose stop n8n
 
-# Restore data
 docker run --rm \
-  -v n8n-data:/data \
+  -v n8n-data:/restore \
   -v $(pwd):/backup \
-  alpine:latest \
-  tar xzf /backup/n8n_data_20241007_120000.tar.gz -C /data
+  alpine:3.20 \
+  sh -c "cd /restore && rm -rf ./* && tar xzf /backup/n8n_data_YYYYmmdd_HHMMSS.tar.gz"
 
-# Start service
 docker compose start n8n
 ```
+
+5. PostgreSQL-Dump einspielen:
+
+```bash
+gunzip -c postgres_YYYYmmdd_HHMMSS.sql.gz | \
+  docker exec -i postgres psql -U ${DB_POSTGRESDB_USER:-n8n} -d ${DB_POSTGRESDB_DATABASE:-n8n}
+```
+
+> 📘 Details stehen in der `backup_YYYYmmdd_HHMMSS.info`, die im Backup-Bundle
+> enthalten ist.
 
 ## 🔄 Updates
 
