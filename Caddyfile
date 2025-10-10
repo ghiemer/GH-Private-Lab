@@ -20,7 +20,7 @@
 	}
 
 	# Optional: ACME-Kontaktadresse hinterlegen (nicht zwingend)
-	tls deine@email.de
+    tls {$ACME_EMAIL}
 }
 
 # Optional – Caddy macht HTTP→HTTPS ohnehin automatisch:
