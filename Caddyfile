@@ -1,25 +1,29 @@
-your-domain.com {
-    reverse_proxy n8n:5678
-    
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        X-XSS-Protection "1; mode=block"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        -Server
-    }
-    
-    encode gzip
-    
-    log {
-        output stdout
-        format console
-    }
-    
-    tls your-email@example.com
+{$N8N_HOST} {
+	encode zstd gzip
+
+	header {
+		# HSTS erst aktivieren, wenn alles stabil läuft:
+		# Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		-Server
+	}
+
+	reverse_proxy n8n:5678
+
+	log {
+		output stdout
+		format console
+	}
+
+	# Optional: ACME-Kontaktadresse hinterlegen (nicht zwingend)
+	tls deine@email.de
 }
 
-http://your-domain.com {
-    redir https://{host}{uri} permanent
+# Optional – Caddy macht HTTP→HTTPS ohnehin automatisch:
+http://{$N8N_HOST} {
+	redir https://{host}{uri} permanent
 }

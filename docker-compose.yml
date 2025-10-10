@@ -7,13 +7,16 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    networks:
-      - proxy
     environment:
       - CADDY_INGRESS_NETWORKS=proxy
+      - N8N_HOST=${N8N_HOST}
+    networks:
+      - proxy
+    depends_on:
+      - n8n
 
   postgres:
     image: postgres:16-alpine
@@ -23,6 +26,7 @@ services:
       POSTGRES_DB: ${DB_POSTGRESDB_DATABASE}
       POSTGRES_USER: ${DB_POSTGRESDB_USER}
       POSTGRES_PASSWORD: ${DB_POSTGRESDB_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
@@ -41,48 +45,36 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - WEBHOOK_URL=${WEBHOOK_URL}
-      - N8N_HOST=${N8N_HOST}
-      - N8N_PROTOCOL=${N8N_PROTOCOL}
-      - N8N_PORT=${N8N_PORT}
-      - N8N_PROXY_HOPS=${N8N_PROXY_HOPS}
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
-      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
-      - DB_TYPE=${DB_TYPE}
-      - DB_POSTGRESDB_HOST=${DB_POSTGRESDB_HOST}
+      # DB
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
       - DB_POSTGRESDB_DATABASE=${DB_POSTGRESDB_DATABASE}
       - DB_POSTGRESDB_USER=${DB_POSTGRESDB_USER}
       - DB_POSTGRESDB_PASSWORD=${DB_POSTGRESDB_PASSWORD}
+
+      # Reverse Proxy
+      - N8N_HOST=${N8N_HOST}
+      - N8N_PROTOCOL=https
+      - N8N_PORT=5678
+      - N8N_PROXY_HOPS=1
+      - WEBHOOK_URL=https://${N8N_HOST}
+
+      # TZ & Encryption
+      - TZ=${TZ}
+      - GENERIC_TIMEZONE=${TZ}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
     volumes:
       - n8n-data:/home/node/.n8n
     networks:
       - proxy
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5678/healthz || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Placeholder service for future MCP integration
-  mcp:
-    image: alpine:latest
-    container_name: mcp-placeholder
-    restart: "no"
-    command: ["echo", "MCP service placeholder - configure as needed"]
-    networks:
-      - proxy
-
-volumes:
-  caddy-data:
-    name: caddy-data
-  caddy-config:
-    name: caddy-config
-  n8n-data:
-    name: n8n-data
-  postgres-data:
-    name: postgres-data
+    # kein ports: -> nur via Caddy erreichbar
 
 networks:
   proxy:
-    name: proxy
-    driver: bridge
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgres-data:
+  n8n-data:

@@ -57,3 +57,4 @@ node_modules/
 # Dokumentation Build
 docs/_build/
 docs/.doctrees/
+sync_config.jsonc
