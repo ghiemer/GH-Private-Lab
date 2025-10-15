@@ -7,7 +7,6 @@ PROJECT_ROOT=$(cd "${TEST_DIR}/.." && pwd)
 # shellcheck disable=SC1090
 source "${PROJECT_ROOT}/scripts/backup.sh"
 set +e
-set -u
 set -o pipefail
 
 PASS_COUNT=0
