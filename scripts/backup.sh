@@ -28,66 +28,9 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "${SCRIPT_DIR}/.." && pwd)
 
-if [[ -f "${PROJECT_ROOT}/.env" ]]; then
-  set -a
-  source "${PROJECT_ROOT}/.env"
-  set +a
-fi
-
-if [[ -z "${BACKUP_PASSWORD:-}" ]]; then
-  echo "[ERROR] BACKUP_PASSWORD must be set (passphrase for encryption)" >&2
-  exit 1
-fi
-
-BACKUP_ROOT=${1:-${BACKUP_ROOT:-"${PROJECT_ROOT}/backups"}}
-BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-30}
-POSTGRES_CONTAINER=${POSTGRES_CONTAINER:-postgres}
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-OUTPUT_FILE="${BACKUP_ROOT}/n8n_full_backup_${TIMESTAMP}.tar.gz.enc"
-
-mkdir -p "${BACKUP_ROOT}"
-TMP_DIR=$(mktemp -d)
-trap 'rm -rf "${TMP_DIR}"' EXIT INT TERM
-
 log() {
   printf '[%s] %s\n' "$(date +"%Y-%m-%d %H:%M:%S")" "$*"
 }
-
-# ----------------------------------------------------------------------------
-# PostgreSQL logical dump
-# ----------------------------------------------------------------------------
-log "Dumping PostgreSQL database"
-
-PGUSER=${DB_POSTGRESDB_USER:-n8n}
-PGDATABASE=${DB_POSTGRESDB_DATABASE:-n8n}
-PGPASSWORD_VALUE=${DB_POSTGRESDB_PASSWORD:-n8n}
-
-PG_DUMP_PATH="${TMP_DIR}/postgres_${TIMESTAMP}.sql"
-
-docker exec \
-  -e PGPASSWORD="${PGPASSWORD_VALUE}" \
-  "${POSTGRES_CONTAINER}" \
-  pg_dump \
-    -U "${PGUSER}" \
-    -d "${PGDATABASE}" \
-    --no-owner \
-    --no-privileges \
-    --clean \
-    --if-exists \
-    --create \
-    --verbose \
-  > "${PG_DUMP_PATH}"
-
-log "Compressing PostgreSQL dump"
-gzip -9 "${PG_DUMP_PATH}"
-PG_DUMP_PATH+=".gz"
-
-# ----------------------------------------------------------------------------
-# Docker volumes
-# ----------------------------------------------------------------------------
-log "Archiving Docker volumes"
-
-INCLUDED_VOLUMES=()
 
 archive_volume() {
   local volume_name=$1
@@ -107,44 +50,103 @@ archive_volume() {
   INCLUDED_VOLUMES+=("${volume_name}")
 }
 
-archive_volume "gh-private-lab_n8n-data" "n8n_data_${TIMESTAMP}.tar.gz"
-archive_volume "gh-private-lab_caddy-data" "caddy_data_${TIMESTAMP}.tar.gz"
-archive_volume "gh-private-lab_caddy-config" "caddy_config_${TIMESTAMP}.tar.gz"
-
-# ----------------------------------------------------------------------------
-# Configuration files & metadata
-# ----------------------------------------------------------------------------
-log "Collecting configuration files"
-
-CONFIG_ARCHIVE="${TMP_DIR}/configs_${TIMESTAMP}.tar.gz"
-
-CONFIG_ITEMS=(
-  "docker-compose.yml"
-  "Caddyfile"
-  ".env"
-  ".env.local"
-  ".env.production"
-  ".env.example"
-  "sync_config.jsonc"
-  "backup.sh"
-)
-
-EXISTING_CONFIGS=()
-for item in "${CONFIG_ITEMS[@]}"; do
-  if [[ -e "${PROJECT_ROOT}/${item}" ]]; then
-    EXISTING_CONFIGS+=("${item}")
+run_backup() {
+  if [[ -f "${PROJECT_ROOT}/.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "${PROJECT_ROOT}/.env"
+    set +a
   fi
-done
 
-if (( ${#EXISTING_CONFIGS[@]} > 0 )); then
-  tar -czf "${CONFIG_ARCHIVE}" -C "${PROJECT_ROOT}" "${EXISTING_CONFIGS[@]}"
-else
-  rm -f "${CONFIG_ARCHIVE}"
-  CONFIG_ARCHIVE=""
-fi
+  if [[ -z "${BACKUP_PASSWORD:-}" ]]; then
+    echo "[ERROR] BACKUP_PASSWORD must be set (passphrase for encryption)" >&2
+    exit 1
+  fi
 
-# Backup manifest
-cat <<EOF > "${TMP_DIR}/backup_${TIMESTAMP}.info"
+  BACKUP_ROOT=${1:-${BACKUP_ROOT:-"${PROJECT_ROOT}/backups"}}
+  BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-30}
+  POSTGRES_CONTAINER=${POSTGRES_CONTAINER:-postgres}
+  TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+  OUTPUT_FILE="${BACKUP_ROOT}/n8n_full_backup_${TIMESTAMP}.tar.gz.enc"
+
+  mkdir -p "${BACKUP_ROOT}"
+  TMP_DIR=$(mktemp -d)
+  trap 'rm -rf "${TMP_DIR}"' EXIT INT TERM
+
+  # --------------------------------------------------------------------------
+  # PostgreSQL logical dump
+  # --------------------------------------------------------------------------
+  log "Dumping PostgreSQL database"
+
+  PGUSER=${DB_POSTGRESDB_USER:-n8n}
+  PGDATABASE=${DB_POSTGRESDB_DATABASE:-n8n}
+  PGPASSWORD_VALUE=${DB_POSTGRESDB_PASSWORD:-n8n}
+
+  PG_DUMP_PATH="${TMP_DIR}/postgres_${TIMESTAMP}.sql"
+
+  docker exec \
+    -e PGPASSWORD="${PGPASSWORD_VALUE}" \
+    "${POSTGRES_CONTAINER}" \
+    pg_dump \
+      -U "${PGUSER}" \
+      -d "${PGDATABASE}" \
+      --no-owner \
+      --no-privileges \
+      --clean \
+      --if-exists \
+      --create \
+      --verbose \
+    > "${PG_DUMP_PATH}"
+
+  log "Compressing PostgreSQL dump"
+  gzip -9 "${PG_DUMP_PATH}"
+  PG_DUMP_PATH+=".gz"
+
+  # --------------------------------------------------------------------------
+  # Docker volumes
+  # --------------------------------------------------------------------------
+  log "Archiving Docker volumes"
+
+  INCLUDED_VOLUMES=()
+
+  archive_volume "gh-private-lab_n8n-data" "n8n_data_${TIMESTAMP}.tar.gz"
+  archive_volume "gh-private-lab_caddy-data" "caddy_data_${TIMESTAMP}.tar.gz"
+  archive_volume "gh-private-lab_caddy-config" "caddy_config_${TIMESTAMP}.tar.gz"
+
+  # --------------------------------------------------------------------------
+  # Configuration files & metadata
+  # --------------------------------------------------------------------------
+  log "Collecting configuration files"
+
+  CONFIG_ARCHIVE="${TMP_DIR}/configs_${TIMESTAMP}.tar.gz"
+
+  CONFIG_ITEMS=(
+    "docker-compose.yml"
+    "Caddyfile"
+    ".env"
+    ".env.local"
+    ".env.production"
+    ".env.example"
+    "sync_config.jsonc"
+    "scripts/backup.sh"
+  )
+
+  EXISTING_CONFIGS=()
+  for item in "${CONFIG_ITEMS[@]}"; do
+    if [[ -e "${PROJECT_ROOT}/${item}" ]]; then
+      EXISTING_CONFIGS+=("${item}")
+    fi
+  done
+
+  if (( ${#EXISTING_CONFIGS[@]} > 0 )); then
+    tar -czf "${CONFIG_ARCHIVE}" -C "${PROJECT_ROOT}" "${EXISTING_CONFIGS[@]}"
+  else
+    rm -f "${CONFIG_ARCHIVE}"
+    CONFIG_ARCHIVE=""
+  fi
+
+  # Backup manifest
+  cat <<EOF > "${TMP_DIR}/backup_${TIMESTAMP}.info"
 Backup created: ${TIMESTAMP}
 Output file: $(basename "${OUTPUT_FILE}")
 Host: $(hostname)
@@ -155,25 +157,30 @@ Configuration archive: $(basename "${CONFIG_ARCHIVE:-none}")
 Retention: ${BACKUP_RETENTION_DAYS} days
 EOF
 
-# ----------------------------------------------------------------------------
-# Encrypt bundled archive
-# ----------------------------------------------------------------------------
-log "Creating encrypted backup archive"
+  # --------------------------------------------------------------------------
+  # Encrypt bundled archive
+  # --------------------------------------------------------------------------
+  log "Creating encrypted backup archive"
 
-pushd "${TMP_DIR}" >/dev/null
+  pushd "${TMP_DIR}" >/dev/null
 
-tar czf - . \
-  | openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:BACKUP_PASSWORD \
-  > "${OUTPUT_FILE}"
+  tar czf - . \
+    | openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:BACKUP_PASSWORD \
+    > "${OUTPUT_FILE}"
 
-popd >/dev/null
+  popd >/dev/null
 
-log "Encrypted backup written to ${OUTPUT_FILE}"
+  log "Encrypted backup written to ${OUTPUT_FILE}"
 
-# ----------------------------------------------------------------------------
-# Retention cleanup
-# ----------------------------------------------------------------------------
-log "Removing backups older than ${BACKUP_RETENTION_DAYS} days"
-find "${BACKUP_ROOT}" -name "n8n_full_backup_*.tar.gz.enc" -mtime +"${BACKUP_RETENTION_DAYS}" -delete 2>/dev/null || true
+  # --------------------------------------------------------------------------
+  # Retention cleanup
+  # --------------------------------------------------------------------------
+  log "Removing backups older than ${BACKUP_RETENTION_DAYS} days"
+  find "${BACKUP_ROOT}" -name "n8n_full_backup_*.tar.gz.enc" -mtime +"${BACKUP_RETENTION_DAYS}" -delete 2>/dev/null || true
 
-log "Backup completed successfully"
+  log "Backup completed successfully"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  run_backup "$@"
+fi

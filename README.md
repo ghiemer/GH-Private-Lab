@@ -61,8 +61,7 @@ cd /opt/n8n-production
 # - docker-compose.yml
 # - Caddyfile
 # - .env.example
-# - deploy.sh
-# - backup.sh
+# - scripts/backup.sh
 ```
 
 ### 3. Environment Configuration
@@ -126,12 +125,12 @@ docker compose ps
 
 ### Check service status
 ```bash
-./deploy.sh status
+docker compose ps
 ```
 
 ### View logs
 ```bash
-./deploy.sh logs
+docker compose logs
 
 # Or specifically:
 docker compose logs n8n
@@ -141,7 +140,7 @@ docker compose logs postgres
 
 ### Restart services
 ```bash
-./deploy.sh restart
+docker compose restart
 
 # Or individually:
 docker compose restart n8n

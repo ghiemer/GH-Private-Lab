@@ -68,7 +68,7 @@ services:
       - n8n-data:/home/node/.n8n
     networks:
       - proxy
-    # kein ports: -> nur via Caddy erreichbar
+    # no ports exposed; reachable only via Caddy
 
 networks:
   proxy:
